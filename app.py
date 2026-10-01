@@ -9,9 +9,9 @@ from datetime import datetime
 st.set_page_config(page_title="Gestão Financeira", layout="wide")
 
 # --- GERENCIADOR DE COOKIES (PERSISTÊNCIA DE SESSÃO) ---
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
+# @st.cache_resource
+# def get_cookie_manager():
+#    return stx.CookieManager()
 
 cookie_manager = get_cookie_manager()
 
