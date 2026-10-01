@@ -152,6 +152,8 @@ with tab_dash:
         st.divider()
 
         # FLUXO DE CAIXA DO MÊS
+        st.subheader(f"📊 Fluxo de Caixa ({mes_selecionado_nome}/{ano_selecionado})")
+
         if not df_full.empty:
             df_full['data'] = pd.to_datetime(df_full['data'])
             df_mes = df_full[(df_full['data'].dt.year == ano_selecionado) & (df_full['data'].dt.month == mes_selecionado)]
@@ -160,17 +162,16 @@ with tab_dash:
             ano_ant = ano_selecionado - 1 if mes_selecionado == 1 else ano_selecionado
             df_mes_ant = df_full[(df_full['data'].dt.year == ano_ant) & (df_full['data'].dt.month == mes_ant)]
 
-            rec_atual = df_mes[df_mes['tipo'] == 'Receita']['valor'].sum()
-            desp_atual = df_mes[df_mes['tipo'] == 'Despesa']['valor'].sum()
+            rec_atual = df_mes[df_mes['tipo'] == 'Receita']['valor'].sum() if not df_mes.empty else 0.0
+            desp_atual = df_mes[df_mes['tipo'] == 'Despesa']['valor'].sum() if not df_mes.empty else 0.0
             saldo_mes = rec_atual - desp_atual
 
-            rec_ant = df_mes_ant[df_mes_ant['tipo'] == 'Receita']['valor'].sum()
-            desp_ant = df_mes_ant[df_mes_ant['tipo'] == 'Despesa']['valor'].sum()
+            rec_ant = df_mes_ant[df_mes_ant['tipo'] == 'Receita']['valor'].sum() if not df_mes_ant.empty else 0.0
+            desp_ant = df_mes_ant[df_mes_ant['tipo'] == 'Despesa']['valor'].sum() if not df_mes_ant.empty else 0.0
 
             delta_rec = ((rec_atual - rec_ant) / rec_ant * 100) if rec_ant > 0 else 0
             delta_desp = ((desp_atual - desp_ant) / desp_ant * 100) if desp_ant > 0 else 0
 
-            st.subheader(f"📊 Fluxo de Caixa ({mes_selecionado_nome}/{ano_selecionado})")
             col1, col2, col3 = st.columns(3)
             col1.metric("Receitas no Mês", f"R$ {rec_atual:,.2f}", f"{delta_rec:+.1f}% vs mês anterior")
             col2.metric("Despesas no Mês", f"R$ {desp_atual:,.2f}", f"{delta_desp:+.1f}% vs mês anterior", delta_color="inverse")
@@ -181,12 +182,12 @@ with tab_dash:
             col_chart1, col_chart2 = st.columns(2)
             with col_chart1:
                 st.subheader("Despesas por Categoria")
-                df_desp = df_mes[df_mes['tipo'] == 'Despesa']
+                df_desp = df_mes[df_mes['tipo'] == 'Despesa'] if not df_mes.empty else pd.DataFrame()
                 if not df_desp.empty:
                     fig_cat = px.pie(df_desp, names='categoria', values='valor', hole=0.4)
                     st.plotly_chart(fig_cat, use_container_width=True)
                 else:
-                    st.info("Nenhuma despesa no período.")
+                    st.info("Nenhuma despesa no período selecionado.")
 
             with col_chart2:
                 st.subheader("Investimentos por Tipo de Ativo")
@@ -196,19 +197,29 @@ with tab_dash:
                 else:
                     st.info("Nenhum investimento cadastrado.")
 
+            st.divider()
+
+            # EXTRATO COMPLETO DE TRANSAÇÕES DO MÊS SELECIONADO
+            st.subheader(f"📄 Extrato de Transações — {mes_selecionado_nome}/{ano_selecionado}")
+            if not df_mes.empty:
+                df_mes_display = df_mes[['data', 'tipo', 'categoria', 'forma_pagamento', 'valor', 'descricao']].copy()
+                df_mes_display['data'] = df_mes_display['data'].dt.strftime('%d/%m/%Y')
+                st.dataframe(df_mes_display, use_container_width=True)
+            else:
+                st.info(f"Nenhuma transação cadastrada no mês de {mes_selecionado_nome} de {ano_selecionado}.")
+
         else:
-            st.info("Nenhuma transação registrada.")
+            st.info("Nenhuma transação registrada no banco de dados.")
     except Exception as e:
         st.error(f"Erro ao carregar dashboard: {e}")
 
-# --- TAB 2: SALDO E PATRIMÔNIO (NOVA) ---
+# --- TAB 2: SALDO E PATRIMÔNIO ---
 with tab_patrimonio:
     st.subheader("🏦 Gerenciamento de Saldo e Investimentos")
     st.caption("Cadastre e atualize suas posições. Estes valores não afetam a soma de receitas e despesas do fluxo mensal.")
 
     col_saldo, col_invest = st.columns(2)
 
-    # CADASTRO DE SALDO
     with col_saldo:
         st.markdown("### Saldo em Contas")
         with st.form("form_saldo", clear_on_submit=True):
@@ -232,7 +243,6 @@ with tab_patrimonio:
             except Exception as e:
                 st.error(f"Erro ao salvar saldo: {e}")
 
-        # Tabela de saldos
         try:
             conn = get_connection()
             df_s = pd.read_sql_query("SELECT id, institicao, saldo FROM saldos_conta", conn)
@@ -242,7 +252,6 @@ with tab_patrimonio:
         except:
             pass
 
-    # CADASTRO DE INVESTIMENTOS
     with col_invest:
         st.markdown("### Investimentos por Categoria")
         tipos_investimento = ["Renda Fixa / CDB", "Tesouro Direto", "Ações", "Fundos Imobiliários (FIIs)", "Criptomoedas", "Previdência", "Outros"]
@@ -269,7 +278,6 @@ with tab_patrimonio:
             except Exception as e:
                 st.error(f"Erro ao salvar investimento: {e}")
 
-        # Tabela de investimentos
         try:
             conn = get_connection()
             df_i = pd.read_sql_query("SELECT id, tipo, nome_ativo, valor_investido FROM investimentos", conn)
