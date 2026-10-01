@@ -9,11 +9,8 @@ from datetime import datetime
 st.set_page_config(page_title="Gestão Financeira", layout="wide")
 
 # --- GERENCIADOR DE COOKIES (PERSISTÊNCIA DE SESSÃO) ---
-# @st.cache_resource
-# def get_cookie_manager():
-#    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+# Instanciado diretamente para evitar o aviso CachedWidgetWarning
+cookie_manager = stx.CookieManager()
 
 def check_credentials(username, password):
     correct_user = os.getenv("APP_USER", "admin")
