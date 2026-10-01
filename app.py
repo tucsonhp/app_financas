@@ -6,7 +6,47 @@ import os
 # Configuração da página
 st.set_page_config(page_title="Gestão Financeira", layout="wide")
 
-# Conexão com o PostgreSQL via Variáveis de Ambiente
+# --- GERENCIAMENTO DE SESSÃO / AUTENTICAÇÃO ---
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+def check_credentials(username, password):
+    # Lê usuário e senha das variáveis de ambiente (com valores padrão caso não informados)
+    correct_user = os.getenv("APP_USER", "admin")
+    correct_pass = os.getenv("APP_PASSWORD", "senha123")
+    return username == correct_user and password == correct_pass
+
+def login_form():
+    st.title("🔒 Acesso Restrito - Gestão Financeira")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.form("form_login"):
+            usuario = st.text_input("Usuário")
+            senha = st.text_input("Senha", type="password")
+            btn_entrar = st.form_submit_button("Entrar")
+            
+            if btn_entrar:
+                if check_credentials(usuario, senha):
+                    st.session_state["logged_in"] = True
+                    st.success("Login realizado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha incorretos.")
+
+# Se não estiver logado, exibe apenas a tela de login e encerra a execução do script
+if not st.session_state["logged_in"]:
+    login_form()
+    st.stop()
+
+# --- APLICAÇÃO PRINCIPAL (EXIBIDA APENAS APÓS O LOGIN) ---
+
+# Botão de Logout na Barra Lateral
+if st.sidebar.button("Sair (Logout)"):
+    st.session_state["logged_in"] = False
+    st.rerun()
+
+# Conexão com o PostgreSQL
 def get_connection():
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
@@ -54,7 +94,7 @@ try:
     conn.close()
 
     if not df.empty:
-        # Métrica Resumo
+        # Métricas
         receitas = df[df['tipo'] == 'Receita']['valor'].sum()
         despesas = df[df['tipo'] == 'Despesa']['valor'].sum()
         saldo = receitas - despesas
@@ -62,21 +102,21 @@ try:
         col1, col2, col3 = st.columns(3)
         col1.metric("Receitas Totais", f"R$ {receitas:,.2f}")
         col2.metric("Despesas Totais", f"R$ {despesas:,.2f}")
-        col3.metric("Saldo Atual", f"R$ {saldo:,.2f}", delta_color="normal")
+        col3.metric("Saldo Atual", f"R$ {saldo:,.2f}")
 
         st.divider()
 
-        # Visão por Categoria (Gráfico)
+        # Gráfico por Categoria
         st.subheader("Despesas por Categoria")
         df_despesas = df[df['tipo'] == 'Despesa']
         if not df_despesas.empty:
             cat_chart = df_despesas.groupby('categoria')['valor'].sum()
             st.bar_chart(cat_chart)
 
-        # Tabela de Histórico
+        # Tabela
         st.subheader("Últimos Registros")
         st.dataframe(df[['data', 'tipo', 'categoria', 'valor', 'descricao']], use_container_width=True)
     else:
         st.info("Nenhuma transação registrada ainda.")
 except Exception as e:
-        st.error(f"Erro ao carregar dados do banco: {e}")
+    st.error(f"Erro ao carregar dados do banco: {e}")
