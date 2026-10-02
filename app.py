@@ -142,7 +142,6 @@ with tab_dash:
         total_investido = df_invest['valor_investido'].sum() if not df_invest.empty else 0.00
         patrimonio_total = total_saldo_contas + total_investido
 
-        # RESUMO PATRIMONIAL NO TOPO
         st.subheader("💡 Resumo Patrimonial Atual")
         p1, p2, p3 = st.columns(3)
         p1.metric("Saldo em Contas", f"R$ {total_saldo_contas:,.2f}")
@@ -151,7 +150,6 @@ with tab_dash:
 
         st.divider()
 
-        # FLUXO DE CAIXA DO MÊS
         st.subheader(f"📊 Fluxo de Caixa ({mes_selecionado_nome}/{ano_selecionado})")
 
         if not df_full.empty:
@@ -199,7 +197,6 @@ with tab_dash:
 
             st.divider()
 
-            # EXTRATO COMPLETO DE TRANSAÇÕES DO MÊS SELECIONADO
             st.subheader(f"📄 Extrato de Transações — {mes_selecionado_nome}/{ano_selecionado}")
             if not df_mes.empty:
                 df_mes_display = df_mes[['data', 'tipo', 'categoria', 'forma_pagamento', 'valor', 'descricao']].copy()
@@ -213,19 +210,20 @@ with tab_dash:
     except Exception as e:
         st.error(f"Erro ao carregar dashboard: {e}")
 
-# --- TAB 2: SALDO E PATRIMÔNIO ---
+# --- TAB 2: SALDO E PATRIMÔNIO (COM EDIÇÃO DIRETA) ---
 with tab_patrimonio:
     st.subheader("🏦 Gerenciamento de Saldo e Investimentos")
-    st.caption("Cadastre e atualize suas posições. Estes valores não afetam a soma de receitas e despesas do fluxo mensal.")
+    st.caption("Adicione novas contas/investimentos no formulário ou altere os valores diretamente nas tabelas abaixo.")
 
     col_saldo, col_invest = st.columns(2)
 
+    # SEÇÃO DE SALDOS EM CONTAS
     with col_saldo:
         st.markdown("### Saldo em Contas")
         with st.form("form_saldo", clear_on_submit=True):
             instituicao = st.text_input("Instituição / Banco (ex: Nubank, Inter)")
             saldo_val = st.number_input("Saldo Atual (R$)", min_value=0.00, format="%.2f")
-            btn_saldo = st.form_submit_button("Atualizar / Adicionar Saldo")
+            btn_saldo = st.form_submit_button("➕ Adicionar Nova Conta")
 
         if btn_saldo and instituicao.strip() != "":
             try:
@@ -238,20 +236,60 @@ with tab_patrimonio:
                 conn.commit()
                 cur.close()
                 conn.close()
-                st.success("Saldo salvo com sucesso!")
+                st.success("Conta adicionada!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar saldo: {e}")
 
+        st.divider()
+        st.markdown("#### ✏️ Editar / Atualizar Saldos Existentes")
         try:
             conn = get_connection()
-            df_s = pd.read_sql_query("SELECT id, institicao, saldo FROM saldos_conta", conn)
+            df_s = pd.read_sql_query("SELECT id, institicao, saldo FROM saldos_conta ORDER BY id ASC", conn)
             conn.close()
-            if not df_s.empty:
-                st.dataframe(df_s[['institicao', 'saldo']], use_container_width=True)
-        except:
-            pass
 
+            if not df_s.empty:
+                edited_saldos = st.data_editor(
+                    df_s,
+                    disabled=["id"],
+                    column_config={
+                        "institicao": st.column_config.TextColumn("Instituição", required=True),
+                        "saldo": st.column_config.NumberColumn("Saldo Atual (R$)", min_value=0.00, format="R$ %.2f", required=True)
+                    },
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    key="editor_saldos"
+                )
+
+                if st.button("💾 Salvar Alterações de Saldos"):
+                    conn = get_connection()
+                    cur = conn.cursor()
+                    # 1. Identificar registros removidos pelo editor
+                    ids_manter = set(edited_saldos['id'])
+                    ids_banco = set(df_s['id'])
+                    ids_deletar = ids_banco - ids_manter
+                    for id_del in ids_deletar:
+                        cur.execute("DELETE FROM saldos_conta WHERE id = %s", (id_del,))
+
+                    # 2. Atualizar registros modificados
+                    for row in edited_saldos.itertuples():
+                        cur.execute("""
+                            UPDATE saldos_conta 
+                            SET institicao = %s, saldo = %s, atualizado_em = CURRENT_TIMESTAMP 
+                            WHERE id = %s
+                        """, (row.institicao, row.saldo, row.id))
+
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    st.success("Saldos atualizados com sucesso!")
+                    st.rerun()
+            else:
+                st.info("Nenhuma conta bancária cadastrada ainda.")
+        except Exception as e:
+            st.error(f"Erro ao carregar saldos: {e}")
+
+    # SEÇÃO DE INVESTIMENTOS
     with col_invest:
         st.markdown("### Investimentos por Categoria")
         tipos_investimento = ["Renda Fixa / CDB", "Tesouro Direto", "Ações", "Fundos Imobiliários (FIIs)", "Criptomoedas", "Previdência", "Outros"]
@@ -260,7 +298,7 @@ with tab_patrimonio:
             tipo_inv = st.selectbox("Tipo de Investimento", tipos_investimento)
             nome_ativo = st.text_input("Nome do Ativo / Produto (ex: CDB Liquidez, PETR4)")
             valor_inv = st.number_input("Valor Investido (R$)", min_value=0.01, format="%.2f")
-            btn_invest = st.form_submit_button("Adicionar Investimento")
+            btn_invest = st.form_submit_button("➕ Adicionar Novo Investimento")
 
         if btn_invest and nome_ativo.strip() != "":
             try:
@@ -273,19 +311,59 @@ with tab_patrimonio:
                 conn.commit()
                 cur.close()
                 conn.close()
-                st.success("Investimento salvo!")
+                st.success("Investimento adicionado!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar investimento: {e}")
 
+        st.divider()
+        st.markdown("#### ✏️ Editar / Atualizar Carteira de Investimentos")
         try:
             conn = get_connection()
-            df_i = pd.read_sql_query("SELECT id, tipo, nome_ativo, valor_investido FROM investimentos", conn)
+            df_i = pd.read_sql_query("SELECT id, tipo, nome_ativo, valor_investido FROM investimentos ORDER BY id ASC", conn)
             conn.close()
+
             if not df_i.empty:
-                st.dataframe(df_i[['tipo', 'nome_ativo', 'valor_investido']], use_container_width=True)
-        except:
-            pass
+                edited_invest = st.data_editor(
+                    df_i,
+                    disabled=["id"],
+                    column_config={
+                        "tipo": st.column_config.SelectboxColumn("Tipo", options=tipos_investimento, required=True),
+                        "nome_ativo": st.column_config.TextColumn("Nome do Ativo", required=True),
+                        "valor_investido": st.column_config.NumberColumn("Valor Investido (R$)", min_value=0.00, format="R$ %.2f", required=True)
+                    },
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    key="editor_investimentos"
+                )
+
+                if st.button("💾 Salvar Alterações nos Investimentos"):
+                    conn = get_connection()
+                    cur = conn.cursor()
+                    # 1. Identificar registros removidos
+                    ids_manter_i = set(edited_invest['id'])
+                    ids_banco_i = set(df_i['id'])
+                    ids_deletar_i = ids_banco_i - ids_manter_i
+                    for id_del in ids_deletar_i:
+                        cur.execute("DELETE FROM investimentos WHERE id = %s", (id_del,))
+
+                    # 2. Atualizar registros modificados
+                    for row in edited_invest.itertuples():
+                        cur.execute("""
+                            UPDATE investimentos 
+                            SET tipo = %s, nome_ativo = %s, valor_investido = %s, atualizado_em = CURRENT_TIMESTAMP 
+                            WHERE id = %s
+                        """, (row.tipo, row.nome_ativo, row.valor_investido, row.id))
+
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    st.success("Investimentos atualizados com sucesso!")
+                    st.rerun()
+            else:
+                st.info("Nenhum investimento cadastrado ainda.")
+        except Exception as e:
+            st.error(f"Erro ao carregar investimentos: {e}")
 
 # --- TAB 3: EDITAR TRANSAÇÕES ---
 with tab_editar:
