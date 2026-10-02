@@ -197,11 +197,25 @@ with tab_dash:
 
             st.divider()
 
+            # EXTRATO COMPLETO DE TRANSAÇÕES DO MÊS SELECIONADO COM CORES
             st.subheader(f"📄 Extrato de Transações — {mes_selecionado_nome}/{ano_selecionado}")
+
             if not df_mes.empty:
                 df_mes_display = df_mes[['data', 'tipo', 'categoria', 'forma_pagamento', 'valor', 'descricao']].copy()
                 df_mes_display['data'] = df_mes_display['data'].dt.strftime('%d/%m/%Y')
-                st.dataframe(df_mes_display, use_container_width=True)
+
+                # Função para destacar o texto da coluna 'tipo'
+                def colorir_tipo(val):
+                    if val == 'Receita':
+                        return 'color: #2e7d32; font-weight: bold;'  # Verde
+                    elif val == 'Despesa':
+                        return 'color: #c62828; font-weight: bold;'  # Vermelho
+                    return ''
+
+                df_styled = df_mes_display.style.map(colorir_tipo, subset=['tipo'])\
+                                                .format({'valor': 'R$ {:,.2f}'})
+
+                st.dataframe(df_styled, use_container_width=True)
             else:
                 st.info(f"Nenhuma transação cadastrada no mês de {mes_selecionado_nome} de {ano_selecionado}.")
 
@@ -217,7 +231,6 @@ with tab_patrimonio:
 
     col_saldo, col_invest = st.columns(2)
 
-    # SEÇÃO DE SALDOS EM CONTAS
     with col_saldo:
         st.markdown("### Saldo em Contas")
         with st.form("form_saldo", clear_on_submit=True):
@@ -264,14 +277,12 @@ with tab_patrimonio:
                 if st.button("💾 Salvar Alterações de Saldos"):
                     conn = get_connection()
                     cur = conn.cursor()
-                    # 1. Identificar registros removidos pelo editor
                     ids_manter = set(edited_saldos['id'])
                     ids_banco = set(df_s['id'])
                     ids_deletar = ids_banco - ids_manter
                     for id_del in ids_deletar:
                         cur.execute("DELETE FROM saldos_conta WHERE id = %s", (id_del,))
 
-                    # 2. Atualizar registros modificados
                     for row in edited_saldos.itertuples():
                         cur.execute("""
                             UPDATE saldos_conta 
@@ -289,7 +300,6 @@ with tab_patrimonio:
         except Exception as e:
             st.error(f"Erro ao carregar saldos: {e}")
 
-    # SEÇÃO DE INVESTIMENTOS
     with col_invest:
         st.markdown("### Investimentos por Categoria")
         tipos_investimento = ["Renda Fixa / CDB", "Tesouro Direto", "Ações", "Fundos Imobiliários (FIIs)", "Criptomoedas", "Previdência", "Outros"]
@@ -340,14 +350,12 @@ with tab_patrimonio:
                 if st.button("💾 Salvar Alterações nos Investimentos"):
                     conn = get_connection()
                     cur = conn.cursor()
-                    # 1. Identificar registros removidos
                     ids_manter_i = set(edited_invest['id'])
                     ids_banco_i = set(df_i['id'])
                     ids_deletar_i = ids_banco_i - ids_manter_i
                     for id_del in ids_deletar_i:
                         cur.execute("DELETE FROM investimentos WHERE id = %s", (id_del,))
 
-                    # 2. Atualizar registros modificados
                     for row in edited_invest.itertuples():
                         cur.execute("""
                             UPDATE investimentos 
