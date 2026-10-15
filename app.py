@@ -6,7 +6,7 @@ import extra_streamlit_components as stx
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="Gestão Financeira", layout="wide")
+st.set_page_config(page_title="Gestão Financeira", page_icon="💰", layout="wide")
 
 # --- GERENCIADOR DE COOKIES ---
 cookie_manager = stx.CookieManager()
@@ -19,24 +19,28 @@ def check_credentials(username, password):
 auth_cookie = cookie_manager.get('auth_financas')
 
 if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = True if auth_cookie == "logged" else False
+    st.session_state["logged_in"] = auth_cookie == "logged"
 
 if not st.session_state["logged_in"]:
-    st.title("🔒 Acesso Restrito - Gestão Financeira")
+    # Textos da página de login centralizados
+    st.markdown("<h1 style='text-align: center;'>🔒 Acesso Restrito</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #666;'>Gestão Financeira</h3>", unsafe_allow_html=True)
+    st.write("")  # Espaçamento vertical
+
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         with st.form("form_login"):
             usuario = st.text_input("Usuário")
             senha = st.text_input("Senha", type="password")
-            btn_entrar = st.form_submit_button("Entrar")
+            btn_entrar = st.form_submit_button("Entrar", icon=":material/login:", use_container_width=True)
             if btn_entrar:
                 if check_credentials(usuario, senha):
                     st.session_state["logged_in"] = True
                     cookie_manager.set('auth_financas', 'logged', key='set_auth')
-                    st.success("Login realizado com sucesso!")
+                    st.success("Login realizado com sucesso!", icon="✅")
                     st.rerun()
                 else:
-                    st.error("Usuário ou senha incorretos.")
+                    st.error("Usuário ou senha incorretos.", icon="❌")
     st.stop()
 
 # --- CONEXÃO BANCO DE DADOS ---
@@ -51,15 +55,14 @@ def get_connection():
 
 def get_categorias():
     try:
-        conn = get_connection()
-        df_cat = pd.read_sql_query("SELECT nome FROM categorias ORDER BY nome ASC", conn)
-        conn.close()
-        return df_cat['nome'].tolist()
-    except:
+        with get_connection() as conn:
+            df_cat = pd.read_sql_query("SELECT nome FROM categorias ORDER BY nome ASC", conn)
+            return df_cat['nome'].tolist()
+    except Exception:
         return ["Moradia", "Alimentação", "Transporte", "Lazer", "Saúde", "Investimentos", "Outros"]
 
 # Logout
-if st.sidebar.button("Sair (Logout)"):
+if st.sidebar.button("Sair (Logout)", icon=":material/logout:"):
     st.session_state["logged_in"] = False
     cookie_manager.delete('auth_financas', key='del_auth')
     st.rerun()
@@ -78,20 +81,18 @@ with st.sidebar.form("form_transacao", clear_on_submit=True):
     forma_pagamento = st.selectbox("Forma de Pagamento", lista_formas_pagamento)
     valor = st.number_input("Valor (R$)", min_value=0.01, format="%.2f")
     descricao = st.text_input("Descrição")
-    btn_salvar = st.form_submit_button("Salvar Registro")
+    btn_salvar = st.form_submit_button("Salvar Registro", icon=":material/add_circle:")
 
 if btn_salvar:
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO transacoes (data, tipo, categoria, valor, descricao, forma_pagamento) VALUES (%s, %s, %s, %s, %s, %s)",
-            (data, tipo, categoria, valor, descricao, forma_pagamento)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        st.sidebar.success("Transação salva!")
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO transacoes (data, tipo, categoria, valor, descricao, forma_pagamento) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (data, tipo, categoria, valor, descricao, forma_pagamento)
+                )
+            conn.commit()
+        st.sidebar.success("Transação salva!", icon="✅")
         st.rerun()
     except Exception as e:
         st.sidebar.error(f"Erro ao salvar: {e}")
@@ -104,13 +105,11 @@ with st.sidebar.form("form_categoria", clear_on_submit=True):
 
 if btn_cat and nova_cat.strip() != "":
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO categorias (nome) VALUES (%s) ON CONFLICT DO NOTHING", (nova_cat.strip(),))
-        conn.commit()
-        cur.close()
-        conn.close()
-        st.sidebar.success(f"Categoria '{nova_cat}' adicionada!")
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO categorias (nome) VALUES (%s) ON CONFLICT DO NOTHING", (nova_cat.strip(),))
+            conn.commit()
+        st.sidebar.success(f"Categoria '{nova_cat}' adicionada!", icon="✅")
         st.rerun()
     except Exception as e:
         st.sidebar.error(f"Erro ao criar categoria: {e}")
@@ -132,11 +131,10 @@ tab_dash, tab_patrimonio, tab_editar = st.tabs(["Dashboard", "🏦 Saldo & Patri
 # --- TAB 1: DASHBOARD ---
 with tab_dash:
     try:
-        conn = get_connection()
-        df_full = pd.read_sql_query("SELECT * FROM transacoes ORDER BY data DESC", conn)
-        df_saldos = pd.read_sql_query("SELECT * FROM saldos_conta", conn)
-        df_invest = pd.read_sql_query("SELECT * FROM investimentos", conn)
-        conn.close()
+        with get_connection() as conn:
+            df_full = pd.read_sql_query("SELECT * FROM transacoes ORDER BY data DESC", conn)
+            df_saldos = pd.read_sql_query("SELECT * FROM saldos_conta", conn)
+            df_invest = pd.read_sql_query("SELECT * FROM investimentos", conn)
 
         total_saldo_contas = df_saldos['saldo'].sum() if not df_saldos.empty else 0.00
         total_investido = df_invest['valor_investido'].sum() if not df_invest.empty else 0.00
@@ -197,19 +195,17 @@ with tab_dash:
 
             st.divider()
 
-            # EXTRATO COMPLETO DE TRANSAÇÕES DO MÊS SELECIONADO COM CORES
             st.subheader(f"📄 Extrato de Transações — {mes_selecionado_nome}/{ano_selecionado}")
 
             if not df_mes.empty:
                 df_mes_display = df_mes[['data', 'tipo', 'categoria', 'forma_pagamento', 'valor', 'descricao']].copy()
                 df_mes_display['data'] = df_mes_display['data'].dt.strftime('%d/%m/%Y')
 
-                # Função para destacar o texto da coluna 'tipo'
                 def colorir_tipo(val):
                     if val == 'Receita':
-                        return 'color: #2e7d32; font-weight: bold;'  # Verde
+                        return 'color: #2e7d32; font-weight: bold;'
                     elif val == 'Despesa':
-                        return 'color: #c62828; font-weight: bold;'  # Vermelho
+                        return 'color: #c62828; font-weight: bold;'
                     return ''
 
                 df_styled = df_mes_display.style.map(colorir_tipo, subset=['tipo'])\
@@ -224,7 +220,7 @@ with tab_dash:
     except Exception as e:
         st.error(f"Erro ao carregar dashboard: {e}")
 
-# --- TAB 2: SALDO E PATRIMÔNIO (COM EDIÇÃO DIRETA) ---
+# --- TAB 2: SALDO E PATRIMÔNIO ---
 with tab_patrimonio:
     st.subheader("🏦 Gerenciamento de Saldo e Investimentos")
     st.caption("Adicione novas contas/investimentos no formulário ou altere os valores diretamente nas tabelas abaixo.")
@@ -240,16 +236,14 @@ with tab_patrimonio:
 
         if btn_saldo and instituicao.strip() != "":
             try:
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    "INSERT INTO saldos_conta (institicao, saldo) VALUES (%s, %s)",
-                    (instituicao.strip(), saldo_val)
-                )
-                conn.commit()
-                cur.close()
-                conn.close()
-                st.success("Conta adicionada!")
+                with get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO saldos_conta (institicao, saldo) VALUES (%s, %s)",
+                            (instituicao.strip(), saldo_val)
+                        )
+                    conn.commit()
+                st.success("Conta adicionada!", icon="✅")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar saldo: {e}")
@@ -257,9 +251,8 @@ with tab_patrimonio:
         st.divider()
         st.markdown("#### ✏️ Editar / Atualizar Saldos Existentes")
         try:
-            conn = get_connection()
-            df_s = pd.read_sql_query("SELECT id, institicao, saldo FROM saldos_conta ORDER BY id ASC", conn)
-            conn.close()
+            with get_connection() as conn:
+                df_s = pd.read_sql_query("SELECT id, institicao, saldo FROM saldos_conta ORDER BY id ASC", conn)
 
             if not df_s.empty:
                 edited_saldos = st.data_editor(
@@ -275,25 +268,21 @@ with tab_patrimonio:
                 )
 
                 if st.button("💾 Salvar Alterações de Saldos"):
-                    conn = get_connection()
-                    cur = conn.cursor()
-                    ids_manter = set(edited_saldos['id'])
-                    ids_banco = set(df_s['id'])
-                    ids_deletar = ids_banco - ids_manter
-                    for id_del in ids_deletar:
-                        cur.execute("DELETE FROM saldos_conta WHERE id = %s", (id_del,))
+                    with get_connection() as conn:
+                        with conn.cursor() as cur:
+                            ids_manter = set(edited_saldos['id'])
+                            ids_banco = set(df_s['id'])
+                            for id_del in (ids_banco - ids_manter):
+                                cur.execute("DELETE FROM saldos_conta WHERE id = %s", (id_del,))
 
-                    for row in edited_saldos.itertuples():
-                        cur.execute("""
-                            UPDATE saldos_conta 
-                            SET institicao = %s, saldo = %s, atualizado_em = CURRENT_TIMESTAMP 
-                            WHERE id = %s
-                        """, (row.institicao, row.saldo, row.id))
-
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                    st.success("Saldos atualizados com sucesso!")
+                            for row in edited_saldos.itertuples():
+                                cur.execute("""
+                                    UPDATE saldos_conta 
+                                    SET institicao = %s, saldo = %s, atualizado_em = CURRENT_TIMESTAMP 
+                                    WHERE id = %s
+                                """, (row.institicao, row.saldo, row.id))
+                        conn.commit()
+                    st.success("Saldos atualizados com sucesso!", icon="✅")
                     st.rerun()
             else:
                 st.info("Nenhuma conta bancária cadastrada ainda.")
@@ -312,16 +301,14 @@ with tab_patrimonio:
 
         if btn_invest and nome_ativo.strip() != "":
             try:
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    "INSERT INTO investimentos (tipo, nome_ativo, valor_investido) VALUES (%s, %s, %s)",
-                    (tipo_inv, nome_ativo.strip(), valor_inv)
-                )
-                conn.commit()
-                cur.close()
-                conn.close()
-                st.success("Investimento adicionado!")
+                with get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO investimentos (tipo, nome_ativo, valor_investido) VALUES (%s, %s, %s)",
+                            (tipo_inv, nome_ativo.strip(), valor_inv)
+                        )
+                    conn.commit()
+                st.success("Investimento adicionado!", icon="✅")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar investimento: {e}")
@@ -329,9 +316,8 @@ with tab_patrimonio:
         st.divider()
         st.markdown("#### ✏️ Editar / Atualizar Carteira de Investimentos")
         try:
-            conn = get_connection()
-            df_i = pd.read_sql_query("SELECT id, tipo, nome_ativo, valor_investido FROM investimentos ORDER BY id ASC", conn)
-            conn.close()
+            with get_connection() as conn:
+                df_i = pd.read_sql_query("SELECT id, tipo, nome_ativo, valor_investido FROM investimentos ORDER BY id ASC", conn)
 
             if not df_i.empty:
                 edited_invest = st.data_editor(
@@ -348,25 +334,21 @@ with tab_patrimonio:
                 )
 
                 if st.button("💾 Salvar Alterações nos Investimentos"):
-                    conn = get_connection()
-                    cur = conn.cursor()
-                    ids_manter_i = set(edited_invest['id'])
-                    ids_banco_i = set(df_i['id'])
-                    ids_deletar_i = ids_banco_i - ids_manter_i
-                    for id_del in ids_deletar_i:
-                        cur.execute("DELETE FROM investimentos WHERE id = %s", (id_del,))
+                    with get_connection() as conn:
+                        with conn.cursor() as cur:
+                            ids_manter_i = set(edited_invest['id'])
+                            ids_banco_i = set(df_i['id'])
+                            for id_del in (ids_banco_i - ids_manter_i):
+                                cur.execute("DELETE FROM investimentos WHERE id = %s", (id_del,))
 
-                    for row in edited_invest.itertuples():
-                        cur.execute("""
-                            UPDATE investimentos 
-                            SET tipo = %s, nome_ativo = %s, valor_investido = %s, atualizado_em = CURRENT_TIMESTAMP 
-                            WHERE id = %s
-                        """, (row.tipo, row.nome_ativo, row.valor_investido, row.id))
-
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                    st.success("Investimentos atualizados com sucesso!")
+                            for row in edited_invest.itertuples():
+                                cur.execute("""
+                                    UPDATE investimentos 
+                                    SET tipo = %s, nome_ativo = %s, valor_investido = %s, atualizado_em = CURRENT_TIMESTAMP 
+                                    WHERE id = %s
+                                """, (row.tipo, row.nome_ativo, row.valor_investido, row.id))
+                        conn.commit()
+                    st.success("Investimentos atualizados com sucesso!", icon="✅")
                     st.rerun()
             else:
                 st.info("Nenhum investimento cadastrado ainda.")
@@ -377,9 +359,8 @@ with tab_patrimonio:
 with tab_editar:
     st.subheader("Edição Direta de Registros")
     try:
-        conn = get_connection()
-        df_edit = pd.read_sql_query("SELECT id, data, tipo, categoria, forma_pagamento, valor, descricao FROM transacoes ORDER BY id DESC", conn)
-        conn.close()
+        with get_connection() as conn:
+            df_edit = pd.read_sql_query("SELECT id, data, tipo, categoria, forma_pagamento, valor, descricao FROM transacoes ORDER BY id DESC", conn)
 
         if not df_edit.empty:
             edited_df = st.data_editor(
@@ -393,22 +374,28 @@ with tab_editar:
                     "data": st.column_config.DateColumn("Data", format="YYYY-MM-DD")
                 },
                 num_rows="dynamic",
-                use_container_width=True
+                use_container_width=True,
+                key="editor_transacoes"
             )
 
             if st.button("💾 Salvar Alterações no Banco"):
-                conn = get_connection()
-                cur = conn.cursor()
-                for row in edited_df.itertuples():
-                    cur.execute("""
-                        UPDATE transacoes 
-                        SET data = %s, tipo = %s, categoria = %s, forma_pagamento = %s, valor = %s, descricao = %s 
-                        WHERE id = %s
-                    """, (row.data, row.tipo, row.categoria, row.forma_pagamento, row.valor, row.descricao, row.id))
-                conn.commit()
-                cur.close()
-                conn.close()
-                st.success("Alterações salvas!")
+                with get_connection() as conn:
+                    with conn.cursor() as cur:
+                        ids_manter_t = set(edited_df['id'])
+                        ids_banco_t = set(df_edit['id'])
+                        for id_del in (ids_banco_t - ids_manter_t):
+                            cur.execute("DELETE FROM transacoes WHERE id = %s", (id_del,))
+
+                        for row in edited_df.itertuples():
+                            cur.execute("""
+                                UPDATE transacoes 
+                                SET data = %s, tipo = %s, categoria = %s, forma_pagamento = %s, valor = %s, descricao = %s 
+                                WHERE id = %s
+                            """, (row.data, row.tipo, row.categoria, row.forma_pagamento, row.valor, row.descricao, row.id))
+                    conn.commit()
+                st.success("Alterações salvas!", icon="✅")
                 st.rerun()
+        else:
+            st.info("Nenhuma transação disponível para edição.")
     except Exception as e:
         st.error(f"Erro ao carregar dados para edição: {e}")
